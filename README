@@ -1,0 +1,188 @@
+# Copyright (C) 2024  David Valin dvalin@redhat.com
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+#
+
+General Requirements
+1) For the most part must be run as root.
+2) bpftrace must be installed.
+3) gcc must be installed.
+
+Description:
+stack_times is a tool that utilizes output from bpftrace to produce a call stack and 
+time spent in each function.  Note, the stack shown may not contain every function
+call that is actually made in the stack.  If that is the case, the time is associated
+with the calling function.
+
+Options
+	-c <command>: command to track
+	-f <function>: function tracking
+	-g: gather kernel profile data
+	-k <kernel profile file>: File to save the kernel profile to/
+	-p <profile file>: profile file to use
+	-r <stack profile file>: Generate timing stack based on what is in stack time profile file
+	-s: number of stacks to show
+	-u: this usage message
+
+To build
+	make stack_times
+
+Example usage:
+
+Example 1
+	Want to get: stack times for msgrcv, program a.out does msgq operations
+
+	1) Generate the kernel profile from when the command is running.
+		./stack_times -c "./a.out 100000000" -k kprofile.out
+	2) Show the stacks that are available.
+		./stack_times -p kprofile.out | sort -n
+	3) Pick a function you want to trace.  In this case we will choose do_msgrcv.
+	4) Run the script, designating the command and function we want to trace
+	   ./stack_times  -c  "./a.out 1000" -f do_msgrcv -p kprofile.out
+	5) Look at the file stack_times_do_msgrcv (stack_times_<func_name>
+
+Example 2
+	Want to get stack times for msgrcv, no designated program.
+	1) Generate the kernel profile from when the command is running.  The sleep ends up being
+	   the time period we gather the kernel profile data for.
+	   ./stack_times -c "sleep 120" -k kprofile.out
+	2) Show the stacks that are available.
+		./stack_times -p kprofile.out | sort -n
+	3) Pick a function you want to trace.  In this case we will choose do_msgrcv.
+	4) Run the script, designating the  function we want to trace.  Note we will gather 20 stacks.
+	   ./stack_times  -f do_msgrcv -p kprofile.out
+	5) Look at the file stack_times_do_msgrcv (stack_times_<func_name>
+
+Restrictions:
+	1) We cap the number of passes and number functions to prevent bpftrace from causing system issues.
+	2) Due to we are using profile samples we may not have all the functions involved in the stack.  Any
+	   missing function time is automatically calculated into the calling function.
+	3) The program does not cap the number of functions we are tracing.  bpftrace has a built in cap.  Be
+	   very careful about increasing that limit, as it may hang the system.
+
+Sample output (1 stack only)
+======= New stack =====
+do_msgrcv
+        __rcu_read_lock
+        __rcu_read_lock                Elapsed ns: 3357
+        ipc_obtain_object_check
+        ipc_obtain_object_check        Elapsed ns: 4282
+        ipcperms
+                security_ipc_permission
+                        selinux_ipc_permission
+                                ipc_has_perm
+                                        avc_has_perm
+                                                __rcu_read_lock
+                                                __rcu_read_lock                Elapsed ns: 2959
+                                                avc_lookup
+                                                avc_lookup                     Elapsed ns: 3277
+                                                __rcu_read_unlock
+                                                __rcu_read_unlock              Elapsed ns: 3260
+                                        avc_has_perm                   Elapsed ns: 11790
+                                ipc_has_perm                   Elapsed ns: 6497
+                        selinux_ipc_permission         Elapsed ns: 6567
+                        bpf_lsm_ipc_permission
+                        bpf_lsm_ipc_permission         Elapsed ns: 3303
+                security_ipc_permission        Elapsed ns: 10538
+        ipcperms                       Elapsed ns: 7026
+        security_msg_queue_msgrcv
+                selinux_msg_queue_msgrcv
+                        __rcu_read_lock
+                        __rcu_read_lock                Elapsed ns: 2801
+                        __rcu_read_unlock
+                        __rcu_read_unlock              Elapsed ns: 2880
+                        avc_has_perm
+                                __rcu_read_lock
+                                __rcu_read_lock                Elapsed ns: 2608
+                                avc_lookup
+                                avc_lookup                     Elapsed ns: 2530
+                                __rcu_read_unlock
+                                __rcu_read_unlock              Elapsed ns: 2890
+                        avc_has_perm                   Elapsed ns: 10633
+                        avc_has_perm
+                       avc_has_perm
+                                __rcu_read_lock
+                                __rcu_read_lock                Elapsed ns: 2540
+                                avc_lookup
+                                avc_lookup                     Elapsed ns: 3015
+                                __rcu_read_unlock
+                                __rcu_read_unlock              Elapsed ns: 2193
+                        avc_has_perm                   Elapsed ns: 9054
+                selinux_msg_queue_msgrcv       Elapsed ns: 13626
+                bpf_lsm_msg_queue_msgrcv
+                bpf_lsm_msg_queue_msgrcv       Elapsed ns: 3039
+        security_msg_queue_msgrcv      Elapsed ns: 9417
+        ktime_get_real_seconds
+        ktime_get_real_seconds         Elapsed ns: 3184
+        refill_obj_stock
+        refill_obj_stock               Elapsed ns: 3300
+        mod_objcg_state
+        mod_objcg_state                Elapsed ns: 3194
+        __rcu_read_lock
+        __rcu_read_lock                Elapsed ns: 3289
+        __rcu_read_unlock
+        __rcu_read_unlock              Elapsed ns: 2838
+        ss_wakeup
+        ss_wakeup                      Elapsed ns: 2847
+        _raw_spin_unlock
+        _raw_spin_unlock               Elapsed ns: 2442
+        wake_up_q
+        wake_up_q                      Elapsed ns: 2977
+        __rcu_read_unlock
+        __rcu_read_unlock              Elapsed ns: 2460
+        do_msg_fill
+                store_msg
+                        __check_object_size
+                                check_stack_object
+                                check_stack_object             Elapsed ns: 2990
+                                is_vmalloc_addr
+                                is_vmalloc_addr                Elapsed ns: 3498
+                                __virt_addr_valid
+                                __virt_addr_valid              Elapsed ns: 3378
+                                __check_heap_object
+                                __check_heap_object            Elapsed ns: 3366
+                        __check_object_size            Elapsed ns: 15414
+                store_msg                      Elapsed ns: 5966
+        do_msg_fill                    Elapsed ns: 6336
+        free_msg
+                security_msg_msg_free
+                        bpf_lsm_msg_msg_free_security
+                        bpf_lsm_msg_msg_free_security  Elapsed ns: 2918
+                        kfree
+                                __slab_free
+                                __slab_free                    Elapsed ns: 3392
+                        kfree                          Elapsed ns: 5989
+                security_msg_msg_free          Elapsed ns: 9457
+                kfree
+                        refill_obj_stock
+                        refill_obj_stock               Elapsed ns: 3259
+                        mod_objcg_state
+                                __rcu_read_lock
+                                __rcu_read_lock                Elapsed ns: 2899
+                                __rcu_read_unlock
+                                __rcu_read_unlock              Elapsed ns: 2827
+                        mod_objcg_state                Elapsed ns: 8164
+                        __rcu_read_lock
+                        __rcu_read_lock                Elapsed ns: 2881
+                        __rcu_read_unlock
+                        __rcu_read_unlock              Elapsed ns: 3061
+                        __slab_free
+                        __slab_free                    Elapsed ns: 2462
+                kfree                          Elapsed ns: 15886
+        free_msg                       Elapsed ns: 8935
+do_msgrcv                      Elapsed ns: 52272
+Total elpased ns: 321963
+
+
